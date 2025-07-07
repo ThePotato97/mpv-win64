@@ -6,24 +6,22 @@ pkgdesc='Library to read and write Dolby Vision metadata'
 arch=('x86_64')
 url="https://github.com/quietvoid/dovi_tool"
 license=('MIT')
-makedepends=('git' 'mingw-w64-ucrt-x86_64-rust')
+# ADDED cargo-c as a dependency
+makedepends=('git' 'mingw-w64-ucrt-x86_64-rust' 'mingw-w64-ucrt-x86_64-cargo-c')
 source=("git+https://github.com/quietvoid/dovi_tool.git#tag=libdovi-${pkgver}")
 sha256sums=('SKIP')
 
-# This function builds the code
 build() {
   cd "${srcdir}/dovi_tool"
-  # This line MUST use 'dolby_vision', not 'libdovi'
-  cargo build --release --package dolby_vision
+
+  cargo cbuild --release
 }
 
-# This function packages the built files
 package() {
   cd "${srcdir}/dovi_tool"
 
   install -Dm644 target/release/libdovi.a "${pkgdir}/usr/lib/libdovi.a"
 
-  # These paths MUST start with 'dolby_vision/'
   install -Dm644 dolby_vision/include/dovi.h "${pkgdir}/usr/include/dovi.h"
   install -Dm644 dolby_vision/libdovi.pc "${pkgdir}/usr/lib/pkgconfig/libdovi.pc"
 }
