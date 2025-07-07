@@ -9,11 +9,15 @@ jobs:
   build:
     runs-on: windows-2022
     steps:
-    - uses: actions/cache@v4
-      id: cache
+    - uses: msys2/setup-msys2@v2
       with:
-        path: D:\ucrt64
-        key: mcf_20250623_15.1.1_x64-ucrt
+        msystem: UCRT64
+        update: true
+        install: |
+          base-devel
+          mingw-w64-ucrt-x86_64-toolchain
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-pkg-config
     - name: Setup Toolchain
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
