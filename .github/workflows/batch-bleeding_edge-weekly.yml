@@ -1,224 +1,1058 @@
+
 name: batch-bleeding_edge-weekly
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
   schedule:
-    - cron: '1 1 * * 4'
+  - cron: '1 1 * * 4'
 
 jobs:
-  build-libs:
-    name: Build all libraries
-    runs-on: windows-2022
-    steps:
-      - name: 'Setup MSYS2 environment'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          cache: true
-          install: |
-            git
-            base-devel
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-pkg-config
-          pacboy: toolchain:p
-
-      - name: Set Git to use LF line endings
-        run: git config --global core.autocrlf false
-
-      - name: Checkout project code
-        uses: actions/checkout@v4
-        # The "with: path:" line has been removed to fix the directory path.
-
-      - name: Build and install all libraries sequentially
-        shell: msys2 {0}
-        env:
-          # The GITHUB_WORKSPACE variable is the reliable way to get the path
-          PKG_CONFIG_PATH: /opt/lib/pkgconfig
-        run: |
-          # Libraries are ordered to build dependencies first.
-          LIBS=(
-            "ffnvcodec-dev" "lame-dev" "lcms2-dev" "libdovi-dev" "libdvdcss-dev"
-            "luajit" "opus-dev" "python-embed" "vapoursynth" "libogg-dev"
-            "libvorbis_aotuv-dev" "freetype2-dev" "libbluray-dev" "fribidi-dev"
-            "harfbuzz-dev" "libass-dev" "libdvdread-dev" "libdvdnav-dev"
-            "vulkan-dev" "shaderc-dev" "spirv-cross-dev" "libplacebo-dev"
-          )
-
-          for lib_path in "${LIBS[@]}"; do
-            echo "::group::Building and Installing ${lib_path}"
-            # Use GITHUB_WORKSPACE for a reliable path
-            cd "${GITHUB_WORKSPACE}/${lib_path}"
-            makepkg -sfi --noconfirm --noprogressbar
-            echo "::endgroup::"
-          done
-
-      - name: Delete old assets
-        if: always()
-        uses: mknejp/delete-release-assets@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: dev
-          assets: "*.zst"
-          fail-if-no-assets: false
-          fail-if-no-release: false
-      - name: Delete old assets (latest)
-        if: always()
-        uses: mknejp/delete-release-assets@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: latest
-          assets: "*.xz"
-          fail-if-no-assets: false
-          fail-if-no-release: false
-
-      - name: Upload 'dev' packages
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./*-dev/*.zst
-          tag: dev
-          overwrite: true
-          file_glob: true
-
-      - name: Upload 'latest' packages (luajit)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./luajit/*pkg*.xz
-          tag: latest
-          overwrite: true
-          file_glob: true
-
-      - name: Upload 'latest' packages (python)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./python-embed/*pkg*.xz
-          tag: latest
-          overwrite: true
-          file_glob: true
-
-      - name: Upload 'latest' packages (vapoursynth)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./vapoursynth/*pkg*.xz
-          tag: latest
-          overwrite: true
-          file_glob: true
-
   ffmpeg:
-    needs: build-libs
-    runs-on: windows-2022
+    needs: [lame, libvorbis_aotuv, opus, ffnvcodec, vapoursynth, vulkan]
+    runs-on: windows-latest
     steps:
-      - name: 'Setup MSYS2 environment'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          cache: true
-          install: git base-devel nasm mingw-w64-ucrt-x86_64-toolchain
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression git nasm --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/lame-dev-3.100-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libogg-dev-1.3.5-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libvorbis_aotuv-dev-1.3.7-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/opus-dev-1.5.2-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vapoursynth-dev-72-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/ffmpeg; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg -p PKGBUILD-git'
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ffmpeg/*pkg*.xz
+        tag: bleeding_edge
+        overwrite: true
+        file_glob: true
+    - name: Upload Dev
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ffmpeg/*.zst
+        tag: bleeding_edge
+        overwrite: true
+        file_glob: true
 
-      - name: Set Git to use LF line endings
-        run: git config --global core.autocrlf false
+  ffnvcodec:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/ffnvcodec-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: ffnvcodec*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ffnvcodec-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-      - name: Checkout project code
-        uses: actions/checkout@v4
-        # The "with: path:" line has been removed here as well.
+  freetype2:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/freetype2-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: freetype2*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: freetype2-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-      - name: Build ffmpeg
-        shell: msys2 {0}
-        env:
-          C_INCLUDE_PATH: /opt/include
-          CPLUS_INCLUDE_PATH: /opt/include
-          LIBRARY_PATH: /opt/lib
-        run: |
-          echo "Downloading dependencies from GitHub Releases..."
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/lame-dev-3.100-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/libogg-dev-1.3.5-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/libvorbis_aotuv-dev-1.3.7-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/opus-dev-1.5.2-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst"
-          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz"
-          
-          echo "Installing dependencies..."
-          pacman -U --noconfirm *.zst *.xz
-          
-          echo "Building ffmpeg..."
-          cd "${GITHUB_WORKSPACE}/ffmpeg"
-          makepkg -s --noconfirm -p PKGBUILD-git
+  fribidi:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\hostedtoolcache\windows\python\3.9.13\x64\python -m pip install meson ninja
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/fribidi-dev; PATH=/d/ucrt64/bin:/c/hostedtoolcache/windows/python/3.9.13/x64:/c/hostedtoolcache/windows/python/3.9.13/x64/scripts:/usr/bin:/opt/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: fribidi*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: fribidi-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-      - name: Upload ffmpeg packages
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./ffmpeg/*pkg*.xz
-          tag: bleeding_edge
-          overwrite: true
-          file_glob: true
+  harfbuzz:
+    needs: [freetype2]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression git --noconfirm'
+        C:\hostedtoolcache\windows\python\3.9.13\x64\python -m pip install meson ninja
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/freetype2-dev-2.13.3-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/harfbuzz-dev; PATH=/d/ucrt64/bin:/c/hostedtoolcache/windows/python/3.9.13/x64:/c/hostedtoolcache/windows/python/3.9.13/x64/scripts:/usr/bin:/opt/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: harfbuzz*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: harfbuzz-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-      - uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./ffmpeg/*.zst
-          tag: bleeding_edge
-          overwrite: true
-          file_glob: true
+  lame:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression nasm --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/lame-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: lame*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: lame-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  lcms2:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/lcms2-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: lcms2*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: lcms2-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libass:
+    needs: [freetype2, fribidi, harfbuzz]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression nasm --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/freetype2-dev-2.13.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/fribidi-dev-1.0.16-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/harfbuzz-dev-11.2.1-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libass-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libass*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libass-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libbluray:
+    needs: [freetype2]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/freetype2-dev-2.13.3-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libbluray-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libbluray*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libbluray-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libdovi:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        # skip building cargo-c
+        # cargo install cargo-c --features=vendored-openssl
+        rustup toolchain install stable-x86_64-pc-windows-gnu
+        rustup default stable-x86_64-pc-windows-gnu
+        curl -OL https://github.com/lu-zero/cargo-c/releases/latest/download/cargo-c-windows-gnu.zip
+        7z x cargo-c-windows-gnu.zip -o'C:\Users\runneradmin\.cargo\bin'
+        curl -OL https://github.com/quietvoid/dovi_tool/archive/refs/tags/libdovi-3.3.2.zip
+        7z x libdovi*.zip
+        cd dovi_tool-libdovi*
+        cd dolby_vision
+        mkdir build
+        set CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+        cargo cinstall --manifest-path=Cargo.toml --prefix=/opt --destdir=build --release --library-type staticlib
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libdovi-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libdovi*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libdovi-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libdvdcss:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libdvdcss-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libdvdcss*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libdvdcss-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libdvdnav:
+    needs: [libdvdread]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdcss-dev-1.4.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdread-dev-6.1.3-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libdvdnav-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libdvdnav*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libdvdnav-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libdvdread:
+    needs: [libdvdcss]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdcss-dev-1.4.3-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libdvdread-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libdvdread*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libdvdread-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libogg:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libogg-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libogg*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libogg-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libplacebo:
+    needs: [lcms2, libdovi, shaderc, spirv-cross, vulkan]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression git --noconfirm'
+        C:\hostedtoolcache\windows\python\3.9.13\x64\python -m pip install meson ninja mako
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/lcms2-dev-2.17-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdovi-dev-3.3.2-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/shaderc-dev-2025.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/spirv-cross-dev-1.4.313.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libplacebo-dev; PATH=/d/ucrt64/bin:/c/hostedtoolcache/windows/python/3.9.13/x64:/c/hostedtoolcache/windows/python/3.9.13/x64/scripts:/usr/bin:/opt/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libplacebo*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libplacebo-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  libvorbis_aotuv:
+    needs: [libogg]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libogg-dev-1.3.5-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/libvorbis_aotuv-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: libvorbis_aotuv*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: libvorbis_aotuv-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  luajit:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/luajit; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: latest
+        assets: luajit*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Delete Dev
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: luajit*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: luajit/*pkg*.xz
+        tag: latest
+        overwrite: true
+        file_glob: true
+    - name: Upload Dev
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: luajit/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  mpv:
+    needs: [ffmpeg, luajit, libass, lcms2, libbluray, libdovi, libdvdnav, shaderc, spirv-cross, vulkan]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include:/opt/include/vapoursynth
+        CPLUS_INCLUDE_PATH: /opt/include:/opt/include/vapoursynth
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression autoconf-wrapper automake-wrapper libtool nasm yasm git --noconfirm'
+        C:\hostedtoolcache\windows\python\3.9.13\x64\python -m pip install meson ninja mako
+        curl -OL https://github.com/${{ github.repository }}/releases/download/bleeding_edge/ffmpeg-git-dev-7.2pre-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/luajit-dev-2.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vapoursynth-dev-72-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/freetype2-dev-2.13.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/fribidi-dev-1.0.16-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/harfbuzz-dev-11.2.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libass-dev-0.17.4-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/lcms2-dev-2.17-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libbluray-dev-1.3.4-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdovi-dev-3.3.2-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdcss-dev-1.4.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdread-dev-6.1.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdnav-dev-6.1.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/shaderc-dev-2025.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/spirv-cross-dev-1.4.313.0-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/mpv; PATH=/d/ucrt64/bin:/c/hostedtoolcache/windows/python/3.9.13/x64:/c/hostedtoolcache/windows/python/3.9.13/x64/scripts:/usr/bin:/opt/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg -p PKGBUILD-git'
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: mpv/*pkg*.xz
+        tag: bleeding_edge
+        overwrite: true
+        file_glob: true
+
+  mpv-stablelib:
+    needs: [luajit, libass, lcms2, libbluray, libdovi, libdvdnav, shaderc, spirv-cross, vulkan]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include:/opt/include/vapoursynth
+        CPLUS_INCLUDE_PATH: /opt/include:/opt/include/vapoursynth
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression yasm git --noconfirm'
+        C:\hostedtoolcache\windows\python\3.9.13\x64\python -m pip install meson ninja mako
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy yasm --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'pacman -Sydd git --noconfirm'
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/ffmpeg-dev-7.1.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/luajit-dev-2.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vapoursynth-dev-72-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/freetype2-dev-2.13.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/fribidi-dev-1.0.16-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/harfbuzz-dev-11.2.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libass-dev-0.17.4-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/lcms2-dev-2.17-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libbluray-dev-1.3.4-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdovi-dev-3.3.2-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdcss-dev-1.4.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdread-dev-6.1.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/libdvdnav-dev-6.1.1-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/shaderc-dev-2025.3-1-x86_64.pkg.tar.zst
+        curl -OL https://github.com/${{ github.repository }}/releases/download/dev/spirv-cross-dev-1.4.313.0-1-x86_64.pkg.tar.zst
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.zst --noconfirm"
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/mpv; PATH=/d/ucrt64/bin:/c/hostedtoolcache/windows/python/3.9.13/x64:/c/hostedtoolcache/windows/python/3.9.13/x64/scripts:/usr/bin:/opt/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg -p PKGBUILD-stablelib'
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: mpv/*pkg*.xz
+        tag: bleeding_edge
+        overwrite: true
+        file_glob: true
+
+  opus:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/opus-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: opus*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: opus-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
   package:
-    needs: [ ffmpeg ]
-    runs-on: windows-2022
+    needs: [mpv, python-embed]
+    runs-on: windows-latest
     steps:
-      - name: 'Setup MSYS2 environment'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          cache: true
-          install: p7zip
+    - name: Package
+      run: |
+        $date = Get-Date -Format "yyyyMMdd"
+        curl -OL https://github.com/${{ github.repository }}/releases/download/bleeding_edge/ffmpeg-git-7.2pre-1-x86_64.pkg.tar.xz
+        curl -OL https://github.com/${{ github.repository }}/releases/download/latest/luajit-2.1-1-x86_64.pkg.tar.xz
+        curl -OL https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz
+        curl -OL https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mpv-git-0.41pre-1-x86_64.pkg.tar.xz
+        curl -OL https://github.com/${{ github.repository }}/releases/download/latest/mcfgthread-20250623-1-x86_64.pkg.tar.xz
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.xz --noconfirm"
+        md C:\msys64\opt\bin\portable_config
+        del *.xz
+        7z a All-in-One-MPV-git-withoutPython-${date}.7z C:\msys64\opt\bin\*
+        copy All-in-One-MPV-git-withoutPython-${date}.7z All-in-One-MPV-git-withoutPython-latest.7z
+        curl -OL https://github.com/${{ github.repository }}/releases/download/latest/python-embed-3.13.5-1-x86_64.pkg.tar.xz
+        curl -OL https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-plugin-core-extra-72-1-x86_64.pkg.tar.xz
+        C:\msys64\usr\bin\bash -lc "pacman -U /d/a/mpv-win64/mpv-win64/*.xz --noconfirm"
+        7z a All-in-One-MPV-git-${date}.7z C:\msys64\opt\bin\*
+        copy All-in-One-MPV-git-${date}.7z All-in-One-MPV-git-latest.7z
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: All*.7z
+        tag: bleeding_edge
+        overwrite: true
+        file_glob: true
 
-      - name: Bundle all binaries
-        shell: powershell
-        run: |
-          $env:date = Get-Date -Format "yyyyMMdd"
-          Write-Host "Downloading packages for without-python bundle..."
-          $pkgs = @(
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/ffmpeg-git-7.2pre-1-x86_64.pkg.tar.xz",
-            "https://github.com/${{ github.repository }}/releases/download/latest/luajit-2.1-1-x86_64.pkg.tar.xz",
-            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz",
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mpv-git-0.41pre-1-x86_64.pkg.tar.xz",
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mcfgthread-20250623-1-x86_64.pkg.tar.xz"
-          )
-          foreach ($pkg in $pkgs) { Invoke-WebRequest -Uri $pkg -OutFile (Split-Path $pkg -Leaf) }
+  python-embed:
+    runs-on: windows-latest
+    steps:
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/python-embed; makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: latest
+        assets: python-embed*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: python-embed/*pkg*.xz
+        tag: latest
+        overwrite: true
+        file_glob: true
 
-          C:\msys64\usr\bin\bash.exe -lc 'pacman -U --noconfirm *.xz'
-          md C:\msys64\ucrt64\bin\portable_config
-          del *.xz
-          7z a "All-in-One-MPV-git-withoutPython-$env:date.7z" C:\msys64\ucrt64\bin\*
-          copy /Y "All-in-One-MPV-git-withoutPython-$env:date.7z" "All-in-One-MPV-git-withoutPython-latest.7z"
+  shaderc:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+        CMAKE: /mingw64/bin/cmake
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression mingw-w64-x86_64-cmake --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/shaderc-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: shaderc*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: shaderc-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-          Write-Host "Downloading packages for with-python bundle..."
-          $python_pkgs = @(
-            "https://github.com/${{ github.repository }}/releases/download/latest/python-embed-3.13.5-1-x86_64.pkg.tar.xz",
-            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-plugin-core-extra-72-1-x86_64.pkg.tar.xz"
-          )
-          foreach ($pkg in $python_pkgs) { Invoke-WebRequest -Uri $pkg -OutFile (Split-Path $pkg -Leaf) }
-          
-          C:\msys64\usr\bin\bash.exe -lc 'pacman -U --noconfirm *.xz'
-          7z a "All-in-One-MPV-git-$env:date.7z" C:\msys64\ucrt64\bin\*
-          copy /Y "All-in-One-MPV-git-$env:date.7z" "All-in-One-MPV-git-latest.7z"
+  spirv-cross:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+        CMAKE: /mingw64/bin/cmake
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression mingw-w64-x86_64-cmake --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/spirv-cross-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: spirv-cross*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: spirv-cross-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
 
-      - name: Upload bundles
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: All*.7z
-          tag: bleeding_edge
-          overwrite: true
-          file_glob: true
+  vapoursynth:
+    runs-on: windows-latest
+    steps:
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/vapoursynth; makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: latest
+        assets: vapoursynth*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Delete Dev
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: vapoursynth*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: vapoursynth/*pkg*.xz
+        tag: latest
+        overwrite: true
+        file_glob: true
+    - name: Upload Dev
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: vapoursynth/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true
+
+  vulkan:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: D:\ucrt64
+        key: mcf_20250623_15.1.1_x64-ucrt
+    - name: Prepare
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        C_INCLUDE_PATH: /opt/include
+        CPLUS_INCLUDE_PATH: /opt/include
+        LIBRARY_PATH: /opt/lib
+        MSYSTEM: UCRT64
+        CMAKE: /mingw64/bin/cmake
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman -Sy base-devel compression mingw-w64-x86_64-cmake --noconfirm'
+        C:\msys64\usr\bin\bash -lc 'cd /d/a/mpv-win64/mpv-win64/vulkan-dev; PATH=/usr/bin:/opt/bin:/d/ucrt64/bin PKG_CONFIG_PATH=/opt/lib/pkgconfig makepkg'
+    - name: Delete
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: dev
+        assets: vulkan*
+        fail-if-no-assets: false
+        fail-if-no-release: false
+    - name: Upload
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: vulkan-dev/*.zst
+        tag: dev
+        overwrite: true
+        file_glob: true

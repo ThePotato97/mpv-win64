@@ -4,25 +4,12 @@ pkgver=3.3.2
 pkgrel=1
 pkgdesc='Library to read and write Dolby Vision metadata'
 arch=('x86_64')
-url="https://github.com/quietvoid/dovi_tool"
+url="https://github.com/quietvoid/dovi_tool/tree/main/dolby_vision"
 license=('MIT')
-makedepends=('git' 'mingw-w64-ucrt-x86_64-rust' 'mingw-w64-ucrt-x86_64-cargo-c')
-source=("git+https://github.com/quietvoid/dovi_tool.git#tag=libdovi-${pkgver}")
-sha256sums=('SKIP')
-
-build() {
-
-  cd "${srcdir}/dovi_tool/dolby_vision"
-
-  cargo cbuild --release
-}
+source=()
+md5sums=()
 
 package() {
-
-  cd "${srcdir}/dovi_tool"
-
-  install -Dm644 "target/${CARCH}-pc-windows-gnu/release/libdovi.a" "${pkgdir}/usr/lib/libdovi.a"
-
-  install -Dm644 dolby_vision/include/dovi.h "${pkgdir}/usr/include/dovi.h"
-  install -Dm644 dolby_vision/libdovi.pc "${pkgdir}/usr/lib/pkgconfig/libdovi.pc"
+  cd /d/a/mpv-win64/mpv-win64/dovi_tool-libdovi*/dolby_vision
+  cp -r build/* $pkgdir/
 }
