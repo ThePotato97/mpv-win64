@@ -19,7 +19,7 @@ md5sums=(
 )
 
 prepare() {
-  cd $srcdir/mpv-$pkgver
+  cd $srcdir
   patch -Np1 -i "${srcdir}/dovi.patch"
 }
 
