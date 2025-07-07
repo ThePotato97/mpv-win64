@@ -6,29 +6,18 @@ pkgdesc='Library to read and write Dolby Vision metadata'
 arch=('x86_64')
 url="https://github.com/quietvoid/dovi_tool"
 license=('MIT')
-# This tells makepkg what build tools are needed. cargo is for Rust.
-makedepends=('git' 'cargo')
-# This tells makepkg where to get the source code from.
+# Corrected the dependency name here
+makedepends=('git' 'mingw-w64-ucrt-x86_64-rust')
 source=("git+https://github.com/quietvoid/dovi_tool.git#tag=libdovi-v${pkgver}")
-
 sha256sums=('SKIP')
 
-# This function compiles the code.
 build() {
-  # cd into the source directory that git checked out.
   cd "${srcdir}/dovi_tool"
-
-  # Build the libdovi package in release mode.
   cargo build --release --package libdovi
 }
 
-# This function copies the built files into the final package.
 package() {
-  # cd into the source directory again.
   cd "${srcdir}/dovi_tool"
-
-  # Install the compiled library, header file, and pkg-config file
-  # into the package directory ($pkgdir) using the correct paths.
   install -Dm644 target/release/libdovi.a "${pkgdir}/usr/lib/libdovi.a"
   install -Dm644 libdovi/include/dovi.h "${pkgdir}/usr/include/dovi.h"
   install -Dm644 libdovi/libdovi.pc "${pkgdir}/usr/lib/pkgconfig/libdovi.pc"
