@@ -68,7 +68,7 @@ jobs:
           MSYSTEM: UCRT64
         run: |
           bash -lc "cd /d/a/mpv-win64/mpv-win64/${{ matrix.pkg.path }} \
-            && makepkg -s --noconfirm -p ${PWD}/PKGBUILD"
+            && makepkg-mingw -s --noconfirm -p ${PWD}/PKGBUILD"
 
       - name: Delete old assets
         if: always()
@@ -114,7 +114,7 @@ jobs:
             curl -fsSL -O https://github.com/${{ github.repository }}/releases/download/dev/$pkg
           done
           bash -lc 'pacman -U --noconfirm *.zst'
-          bash -lc 'cd /d/a/mpv-win64/mpv-win64/ffmpeg && makepkg -s --noconfirm -p PKGBUILD-git'
+          bash -lc 'cd /d/a/mpv-win64/mpv-win64/ffmpeg && makepkg-mingw -s --noconfirm -p PKGBUILD-git'
 
       - name: Upload ffmpeg packages
         uses: svenstaro/upload-release-action@v2
