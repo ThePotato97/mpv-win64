@@ -10,17 +10,7 @@ makedepends=('yasm' 'vapoursynth-dev' 'ffmpeg-dev' 'luajit-dev' 'ffnvcodec-dev' 
 license=('GPL3')
 source=(
   "https://github.com/mpv-player/mpv/archive/v${pkgver}.tar.gz"
-  "dovi.patch"
 )
-md5sums=(
-  'SKIP'
-  'SKIP'
-)
-
-prepare() {
-  cd $srcdir/mpv-$pkgver
-  patch -p1 <"$srcdir/dovi.patch"
-}
 
 build() {
   cd $srcdir/mpv-$pkgver
