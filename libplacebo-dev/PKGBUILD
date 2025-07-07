@@ -18,7 +18,7 @@ md5sums=(
 
 prepare() {
   cd $srcdir/libplacebo*
-  patch -p1 <"$srcdir/libplacebo-dovi.patch"
+  patch -p1 <"$srcdir/dovi.patch"
 }
 
 build() {
