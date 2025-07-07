@@ -7,8 +7,19 @@ arch=('x86_64')
 url="https://github.com/haasn/libplacebo/"
 makedepends=('lcms2-dev' 'libdovi-dev' 'vulkan-dev' 'shaderc-dev' 'spirv-cross-dev')
 license=('LGPL')
-source=("git+https://github.com/haasn/libplacebo#tag=v$pkgver")
-md5sums=('SKIP')
+source=(
+  "git+https://github.com/haasn/libplacebo#tag=v$pkgver"
+  "libplacebo-dovi.patch"
+)
+md5sums=(
+  'SKIP'
+  'SKIP'
+)
+
+prepare() {
+  cd $srcdir/libplacebo*
+  patch -p1 <"$srcdir/libplacebo-dovi.patch"
+}
 
 build() {
   cd $srcdir/libplacebo*

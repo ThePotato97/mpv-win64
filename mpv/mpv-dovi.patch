@@ -1,0 +1,30 @@
+From 4522c6410aa686e1f710d825d450704aef6866f4 Mon Sep 17 00:00:00 2001
+From: Ivan Shapovalov <intelfx@intelfx.name>
+Date: Sun, 18 Aug 2024 18:50:37 +0200
+Subject: [PATCH] mp_image: do not skip MEL-only Dolby Vision metadata w/EL
+
+Improve the EL check to accept RPUs that indicate EL usage (profiles 4
+and 7) if the original bitstream and metadata are MEL-only.
+
+This needs libplacebo commit 9ce8bcff ("util/libav: do not bail on
+MEL-only RPUs w/EL").
+
+[FIXME: new API version in libplacebo and API availabilty check]
+---
+ video/mp_image.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/video/mp_image.c b/video/mp_image.c
+index 609fb17bf0d02..c304be7821b47 100644
+--- a/video/mp_image.c
++++ b/video/mp_image.c
+@@ -1095,8 +1095,7 @@ struct mp_image *mp_image_from_av_frame(struct AVFrame *src)
+     if (sd) {
+ #ifdef PL_HAVE_LAV_DOLBY_VISION
+         const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)sd->buf->data;
+-        const AVDOVIRpuDataHeader *header = av_dovi_get_header(metadata);
+-        if (header->disable_residual_flag) {
++        if (pl_can_map_avdovi_metadata(metadata)) {
+             dst->dovi = dovi = av_buffer_alloc(sizeof(struct pl_dovi_metadata));
+             MP_HANDLE_OOM(dovi);
+ #if PL_API_VER >= 343

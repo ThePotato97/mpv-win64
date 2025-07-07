@@ -6,11 +6,22 @@ pkgdesc='a free, open source, and cross-platform media player'
 arch=('x86_64')
 url='https://mpv.io/'
 makedepends=('yasm' 'vapoursynth-dev' 'ffmpeg-git-dev' 'luajit-dev' 'ffnvcodec-dev' 'freetype2-dev' 'fribidi-dev' 'harfbuzz-dev' 'libass-dev' 'lcms2-dev'
-              'libbluray-dev' 'libdovi-dev' 'libdvdcss-dev' 'libdvdread-dev' 'libdvdnav-dev' 'shaderc-dev' 'spirv-cross-dev' 'vulkan-dev')
+  'libbluray-dev' 'libdovi-dev' 'libdvdcss-dev' 'libdvdread-dev' 'libdvdnav-dev' 'shaderc-dev' 'spirv-cross-dev' 'vulkan-dev')
 conflicts=('mpv')
 license=('GPL3')
-source=("git+https://github.com/mpv-player/mpv")
-md5sums=('SKIP')
+source=(
+  "git+https://github.com/mpv-player/mpv"
+  "mpv-dovi.patch"
+)
+md5sums=(
+  'SKIP'
+  'SKIP'
+)
+
+prepare() {
+  cd "${srcdir}/mpv-${pkgver}"
+  patch -Np1 -i "${srcdir}/mpv-dovi.patch"
+}
 
 build() {
   cd $srcdir
@@ -23,9 +34,9 @@ build() {
   ninja install
 
   cd $srcdir/mpv
-  sed -i 's/ .. exesuf//g'  player/lua/ytdl_hook.lua
+  sed -i 's/ .. exesuf//g' player/lua/ytdl_hook.lua
   export LDFLAGS="$LDFLAGS -static -lstdc++ -lssp"
-  meson setup build --buildtype=release -Dprefix=/opt -Ddvdnav=enabled 
+  meson setup build --buildtype=release -Dprefix=/opt -Ddvdnav=enabled
   meson compile -C build
 }
 

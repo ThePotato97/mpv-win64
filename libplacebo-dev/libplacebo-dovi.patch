@@ -1,0 +1,105 @@
+From 9ce8bcffe4ac8323827a22c6bdc9d4f6fd5ec6fd Mon Sep 17 00:00:00 2001
+From: Ivan Shapovalov <intelfx@intelfx.name>
+Date: Sun, 18 Aug 2024 18:32:48 +0200
+Subject: [PATCH] util/libav: do not bail on MEL-only RPUs w/EL
+
+We can still map DV metadata that indicates enhancement layer usage
+(!disable_residual_flag, Profile 7 and 4) for MEL-only bitstreams,
+which is indicated by trivial NLQ parameters.
+---
+ src/include/libplacebo/utils/libav.h          | 10 ++++-
+ src/include/libplacebo/utils/libav_internal.h | 44 +++++++++++++++++--
+ 2 files changed, 48 insertions(+), 6 deletions(-)
+
+diff --git a/src/include/libplacebo/utils/libav.h b/src/include/libplacebo/utils/libav.h
+index 2b8d76be1..6ab0ae88a 100644
+--- a/src/include/libplacebo/utils/libav.h
++++ b/src/include/libplacebo/utils/libav.h
+@@ -131,12 +131,18 @@ PL_DEPRECATED_IN(v7.343) PL_LIBAV_API void pl_frame_map_avdovi_metadata(
+ // values from the `AVDOVIMetadata`.
+ //
+ // Note: The `pl_dovi_metadata` must be allocated externally.
+-// Also, currently the metadata is only used if the `AVDOVIRpuDataHeader`
+-// `disable_residual_flag` field is not zero and can be checked before allocating.
++// Currently, the metadata can only be mapped if FEL (full enhancement layer)
++// is not used and this can be checked before allocating
++// (see pl_can_map_avdovi_metadata()).
+ PL_LIBAV_API void pl_map_avdovi_metadata(struct pl_color_space *color,
+                                          struct pl_color_repr *repr,
+                                          struct pl_dovi_metadata *dovi,
+                                          const AVDOVIMetadata *metadata);
++
++// Helper function to check if Dolby Vision metadata can be mapped.
++// Returns true if the `AVDOVIRpuDataHeader` `disable_residual_flag` field is
++// not zero or if the NLQ parameters are trivial.
++PL_LIBAV_API bool pl_can_map_avdovi_metadata(const AVDOVIMetadata *metadata);
+ #endif
+ 
+ // Helper function to test if a pixfmt would be supported by the GPU.
+diff --git a/src/include/libplacebo/utils/libav_internal.h b/src/include/libplacebo/utils/libav_internal.h
+index 5cd497f76..78fd32a39 100644
+--- a/src/include/libplacebo/utils/libav_internal.h
++++ b/src/include/libplacebo/utils/libav_internal.h
+@@ -886,12 +886,49 @@ PL_LIBAV_API void pl_map_dovi_metadata(struct pl_dovi_metadata *out,
+     }
+ }
+ 
++static bool pl_avdovi_nlq_is_trivial(const AVDOVIRpuDataHeader *header,
++                                     const AVDOVINLQParams *nlq)
++{
++    return
++        nlq->nlq_offset == 0
++        && nlq->vdr_in_max == (1ULL << header->coef_log2_denom)
++        && nlq->linear_deadzone_slope == 0
++        && nlq->linear_deadzone_threshold == 0
++    ;
++}
++
++static bool pl_avdovi_mapping_nlq_is_trivial(const AVDOVIRpuDataHeader *header,
++                                             const AVDOVIDataMapping *mapping)
++{
++    return
++        mapping->nlq_method_idc == AV_DOVI_NLQ_LINEAR_DZ
++        && pl_avdovi_nlq_is_trivial(header, &mapping->nlq[0])
++        && pl_avdovi_nlq_is_trivial(header, &mapping->nlq[1])
++        && pl_avdovi_nlq_is_trivial(header, &mapping->nlq[2])
++    ;
++}
++
++PL_LIBAV_API bool pl_can_map_avdovi_metadata(const AVDOVIMetadata *metadata)
++{
++    const AVDOVIRpuDataHeader *header;
++    const AVDOVIDataMapping *mapping;
++
++    header = av_dovi_get_header(metadata);
++    if (header->disable_residual_flag)
++        return true;
++
++    mapping = av_dovi_get_mapping(metadata);
++    if (pl_avdovi_mapping_nlq_is_trivial(header, mapping))
++        return true;
++
++    return false;
++}
++
+ PL_LIBAV_API void pl_map_avdovi_metadata(struct pl_color_space *color,
+                                          struct pl_color_repr *repr,
+                                          struct pl_dovi_metadata *dovi,
+                                          const AVDOVIMetadata *metadata)
+ {
+-    const AVDOVIRpuDataHeader *header;
+     const AVDOVIColorMetadata *dovi_color;
+ #if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(59, 12, 100)
+     const AVDOVIDmData *dovi_ext;
+@@ -899,9 +936,8 @@ PL_LIBAV_API void pl_map_avdovi_metadata(struct pl_color_space *color,
+     if (!color || !repr || !dovi)
+         return;
+ 
+-    header = av_dovi_get_header(metadata);
+-    dovi_color = av_dovi_get_color(metadata);
+-    if (header->disable_residual_flag) {
++    if (pl_can_map_avdovi_metadata(metadata)) {
++        dovi_color = av_dovi_get_color(metadata);
+         pl_map_dovi_metadata(dovi, metadata);
+ 
+         repr->dovi = dovi;
