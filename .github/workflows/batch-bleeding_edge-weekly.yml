@@ -13,10 +13,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - name: '${{ matrix.icon }} Setup MSYS2'
+      - name: 'Setup MSYS2'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.sys }}
+          msystem: UCRT64
           update: true
           cache: true
           install: |
