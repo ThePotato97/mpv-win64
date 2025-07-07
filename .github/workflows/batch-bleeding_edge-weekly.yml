@@ -12,33 +12,6 @@ jobs:
   build-libs:
     name: Build all libraries
     runs-on: windows-2022
-    strategy:
-      matrix:
-        pkg:
-          # name, path under mpv-win64/mpv-win64/, GitHub release tag, upload glob
-          - { name: ffnvcodec,    path: ffnvcodec-dev,    tag: dev,    glob: 'ffnvcodec-dev/*.zst' }
-          - { name: freetype2,    path: freetype2-dev,    tag: dev,    glob: 'freetype2-dev/*.zst' }
-          - { name: fribidi,      path: fribidi-dev,      tag: dev,    glob: 'fribidi-dev/*.zst' }
-          - { name: harfbuzz,     path: harfbuzz-dev,     tag: dev,    glob: 'harfbuzz-dev/*.zst' }
-          - { name: lame,         path: lame-dev,         tag: dev,    glob: 'lame-dev/*.zst' }
-          - { name: lcms2,        path: lcms2-dev,        tag: dev,    glob: 'lcms2-dev/*.zst' }
-          - { name: libass,       path: libass-dev,       tag: dev,    glob: 'libass-dev/*.zst' }
-          - { name: libbluray,    path: libbluray-dev,    tag: dev,    glob: 'libbluray-dev/*.zst' }
-          - { name: libdovi,      path: libdovi-dev,      tag: dev,    glob: 'libdovi-dev/*.zst' }
-          - { name: libdvdcss,    path: libdvdcss-dev,    tag: dev,    glob: 'libdvdcss-dev/*.zst' }
-          - { name: libdvdnav,    path: libdvdnav-dev,    tag: dev,    glob: 'libdvdnav-dev/*.zst' }
-          - { name: libdvdread,   path: libdvdread-dev,   tag: dev,    glob: 'libdvdread-dev/*.zst' }
-          - { name: libogg,       path: libogg-dev,       tag: dev,    glob: 'libogg-dev/*.zst' }
-          - { name: libplacebo,   path: libplacebo-dev,   tag: dev,    glob: 'libplacebo-dev/*.zst' }
-          - { name: libvorbis,    path: libvorbis_aotuv-dev, tag: dev,  glob: 'libvorbis_aotuv-dev/*.zst' }
-          - { name: luajit,       path: luajit,           tag: latest, glob: 'luajit/*pkg*.xz' }
-          - { name: opus,         path: opus-dev,         tag: dev,    glob: 'opus-dev/*.zst' }
-          - { name: python-embed, path: python-embed,     tag: latest, glob: 'python-embed/*pkg*.xz' }
-          - { name: shaderc,      path: shaderc-dev,      tag: dev,    glob: 'shaderc-dev/*.zst' }
-          - { name: spirv-cross,  path: spirv-cross-dev,  tag: dev,    glob: 'spirv-cross-dev/*.zst' }
-          - { name: vapoursynth,  path: vapoursynth,      tag: latest, glob: 'vapoursynth/*pkg*.xz' }
-          - { name: vulkan,       path: vulkan-dev,       tag: dev,    glob: 'vulkan-dev/*.zst' }
-
     steps:
       - name: 'Setup MSYS2 environment'
         uses: msys2/setup-msys2@v2
@@ -54,40 +27,115 @@ jobs:
             mingw-w64-ucrt-x86_64-pkg-config
           pacboy: toolchain:p
 
-      - name: Checkout
+      - name: Set Git to use LF line endings
+        run: git config --global core.autocrlf false
+
+      - name: Checkout project code
         uses: actions/checkout@v4
         with:
-          path: mpv-win64 # Checkout to a specific directory to match your cd command
+          path: mpv-win64
 
-      - name: Build ${{ matrix.pkg.name }}
+      - name: Build and install all libraries sequentially
         shell: msys2 {0}
         env:
           PKG_CONFIG_PATH: /opt/lib/pkgconfig
         run: |
-          cd mpv-win64/${{ matrix.pkg.path }}
-          makepkg -s --noconfirm -p ./PKGBUILD
+          # Libraries are ordered to build dependencies first.
+          # The -i flag in 'makepkg -sfi' installs the package after building,
+          # making it available as a dependency for the next packages in the list.
+          LIBS=(
+            # Independent libs first
+            "ffnvcodec-dev"
+            "lame-dev"
+            "lcms2-dev"
+            "libdovi-dev"
+            "libdvdcss-dev"
+            "luajit"
+            "opus-dev"
+            "python-embed"
+            "vapoursynth"
+            # Libs with dependencies
+            "libogg-dev"
+            "libvorbis_aotuv-dev" # Depends on libogg
+            "freetype2-dev"
+            "libbluray-dev" # Depends on freetype2
+            "fribidi-dev"
+            "harfbuzz-dev" # Depends on freetype2, fribidi
+            "libass-dev" # Depends on freetype2, fribidi, harfbuzz
+            "libdvdread-dev"
+            "libdvdnav-dev" # Depends on libdvdread
+            "vulkan-dev"
+            "shaderc-dev"
+            "spirv-cross-dev"
+            "libplacebo-dev" # Depends on vulkan, shaderc, spirv-cross
+          )
+
+          for lib_path in "${LIBS[@]}"; do
+            echo "::group::Building and Installing ${lib_path}"
+            cd "/d/a/mpv-win64/mpv-win64/${lib_path}"
+            makepkg -sfi --noconfirm --noprogressbar
+            echo "::endgroup::"
+          done
 
       - name: Delete old assets
+        # This is a generic cleanup step before uploading everything.
+        # It's better to be specific if possible, but this is a broad approach.
         if: always()
         uses: mknejp/delete-release-assets@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ matrix.pkg.tag }}
-          assets: ${{ matrix.pkg.name }}*
+          tag: dev
+          assets: "*.zst"
+          fail-if-no-assets: false
+          fail-if-no-release: false
+      - name: Delete old assets (latest)
+        if: always()
+        uses: mknejp/delete-release-assets@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          assets: "*.xz"
           fail-if-no-assets: false
           fail-if-no-release: false
 
-      - name: Upload ${{ matrix.pkg.name }}
+      - name: Upload 'dev' packages
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: mpv-win64/${{ matrix.pkg.glob }} # Adjusted path to match checkout
-          tag: ${{ matrix.pkg.tag }}
+          file: mpv-win64/*-dev/*.zst
+          tag: dev
+          overwrite: true
+          file_glob: true
+
+      - name: Upload 'latest' packages (luajit)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: mpv-win64/luajit/*pkg*.xz
+          tag: latest
+          overwrite: true
+          file_glob: true
+
+      - name: Upload 'latest' packages (python)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: mpv-win64/python-embed/*pkg*.xz
+          tag: latest
+          overwrite: true
+          file_glob: true
+
+      - name: Upload 'latest' packages (vapoursynth)
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: mpv-win64/vapoursynth/*pkg*.xz
+          tag: latest
           overwrite: true
           file_glob: true
 
   ffmpeg:
-    needs: build-libs
+    needs: build-libs # Depends on the libraries built and uploaded in the previous job
     runs-on: windows-2022
     steps:
       - name: 'Setup MSYS2 environment'
@@ -98,9 +146,12 @@ jobs:
           cache: true
           install: git base-devel nasm mingw-w64-ucrt-x86_64-toolchain
 
+      - name: Set Git to use LF line endings
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
         with:
-          path: mpv-win64 # Checkout to a specific directory
+          path: mpv-win64
 
       - name: Build ffmpeg
         shell: msys2 {0}
@@ -109,21 +160,21 @@ jobs:
           CPLUS_INCLUDE_PATH: /opt/include
           LIBRARY_PATH: /opt/lib
         run: |
-          echo "Downloading dependencies..."
-          for pkg_url in \
-            "https://github.com/${{ github.repository }}/releases/download/dev/lame-dev-3.100-1-x86_64.pkg.tar.zst" \
-            "https://github.com/${{ github.repository }}/releases/download/dev/libogg-dev-1.3.5-1-x86_64.pkg.tar.zst" \
-            "https://github.com/${{ github.repository }}/releases/download/dev/libvorbis_aotuv-dev-1.3.7-1-x86_64.pkg.tar.zst" \
-            "https://github.com/${{ github.repository }}/releases/download/dev/opus-dev-1.5.2-1-x86_64.pkg.tar.zst" \
-            "https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst" \
-            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst"; do
-            curl -fsSL -O "$pkg_url"
-          done
-
+          echo "Downloading dependencies from GitHub Releases..."
+          # Note: I've updated package versions to what they likely would be after your build.
+          # You may need to adjust these if the versions in your PKGBUILDs change.
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/lame-dev-3.100-1-x86_64.pkg.tar.zst"
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/libogg-dev-1.3.5-1-x86_64.pkg.tar.zst"
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/libvorbis_aotuv-dev-1.3.7-1-x86_64.pkg.tar.zst"
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/opus-dev-1.5.2-1-x86_64.pkg.tar.zst"
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/ffnvcodec-dev-13.0.19.0-1-x86_64.pkg.tar.zst"
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/dev/vulkan-dev-1.4.309.0-1-x86_64.pkg.tar.zst"
+          # This one comes from the 'latest' tag
+          curl -fsSL -O "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz"
+          
           echo "Installing dependencies..."
           pacman -U --noconfirm *.zst *.xz
-
+          
           echo "Building ffmpeg..."
           cd mpv-win64/ffmpeg
           makepkg -s --noconfirm -p PKGBUILD-git
@@ -132,7 +183,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: mpv-win64/ffmpeg/*pkg*.xz # Adjusted path
+          file: mpv-win64/ffmpeg/*pkg*.xz
           tag: bleeding_edge
           overwrite: true
           file_glob: true
@@ -140,13 +191,13 @@ jobs:
       - uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: mpv-win64/ffmpeg/*.zst # Adjusted path
+          file: mpv-win64/ffmpeg/*.zst
           tag: bleeding_edge
           overwrite: true
           file_glob: true
 
   package:
-    needs: [ ffmpeg ] # Only needs ffmpeg, which itself needs build-libs
+    needs: [ ffmpeg ] # This implies it also needs build-libs to have succeeded
     runs-on: windows-2022
     steps:
       - name: 'Setup MSYS2 environment'
@@ -158,36 +209,35 @@ jobs:
           install: p7zip # For the '7z' command
 
       - name: Bundle all binaries
-        shell: msys2 {0}
+        shell: powershell
         run: |
-          date=$(date +%Y%m%d)
+          $env:date = Get-Date -Format "yyyyMMdd"
+          Write-Host "Downloading packages for without-python bundle..."
+          $pkgs = @(
+            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/ffmpeg-git-7.2pre-1-x86_64.pkg.tar.xz",
+            "https://github.com/${{ github.repository }}/releases/download/latest/luajit-2.1-1-x86_64.pkg.tar.xz",
+            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz",
+            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mpv-git-0.41pre-1-x86_64.pkg.tar.xz",
+            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mcfgthread-20250623-1-x86_64.pkg.tar.xz"
+          )
+          foreach ($pkg in $pkgs) { Invoke-WebRequest -Uri $pkg -OutFile (Split-Path $pkg -Leaf) }
+
+          C:\msys64\usr\bin\bash.exe -lc 'pacman -U --noconfirm *.xz'
+          md C:\msys64\ucrt64\bin\portable_config
+          del *.xz
+          7z a "All-in-One-MPV-git-withoutPython-$env:date.7z" C:\msys64\ucrt64\bin\*
+          copy /Y "All-in-One-MPV-git-withoutPython-$env:date.7z" "All-in-One-MPV-git-withoutPython-latest.7z"
+
+          Write-Host "Downloading packages for with-python bundle..."
+          $python_pkgs = @(
+            "https://github.com/${{ github.repository }}/releases/download/latest/python-embed-3.13.5-1-x86_64.pkg.tar.xz",
+            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-plugin-core-extra-72-1-x86_64.pkg.tar.xz"
+          )
+          foreach ($pkg in $python_pkgs) { Invoke-WebRequest -Uri $pkg -OutFile (Split-Path $pkg -Leaf) }
           
-          echo "Downloading packages for without-python bundle..."
-          for pkg_url in \
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/ffmpeg-git-7.2pre-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/latest/luajit-2.1-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-72-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mpv-git-0.41pre-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/bleeding_edge/mcfgthread-20250623-1-x86_64.pkg.tar.xz"; do
-            curl -fsSL -O "$pkg_url"
-          done
-          
-          pacman -U --noconfirm *.xz
-          mkdir -p /ucrt64/bin/portable_config
-          rm -f *.xz
-          7z a "All-in-One-MPV-git-withoutPython-$date.7z" /ucrt64/bin/*
-          cp -f "All-in-One-MPV-git-withoutPython-$date.7z" "All-in-One-MPV-git-withoutPython-latest.7z"
-          
-          echo "Downloading packages for with-python bundle..."
-          for pkg_url in \
-            "https://github.com/${{ github.repository }}/releases/download/latest/python-embed-3.13.5-1-x86_64.pkg.tar.xz" \
-            "https://github.com/${{ github.repository }}/releases/download/latest/vapoursynth-plugin-core-extra-72-1-x86_64.pkg.tar.xz"; do
-            curl -fsSL -O "$pkg_url"
-          done
-          
-          pacman -U --noconfirm *.xz
-          7z a "All-in-One-MPV-git-$date.7z" /ucrt64/bin/*
-          cp -f "All-in-One-MPV-git-$date.7z" "All-in-One-MPV-git-latest.7z"
+          C:\msys64\usr\bin\bash.exe -lc 'pacman -U --noconfirm *.xz'
+          7z a "All-in-One-MPV-git-$env:date.7z" C:\msys64\ucrt64\bin\*
+          copy /Y "All-in-One-MPV-git-$env:date.7z" "All-in-One-MPV-git-latest.7z"
 
       - name: Upload bundles
         uses: svenstaro/upload-release-action@v2
