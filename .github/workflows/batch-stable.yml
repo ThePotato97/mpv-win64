@@ -5,7 +5,7 @@ on:
 
 jobs:
   ffmpeg:
-    runs-on: windows-2019
+    runs-on: windows-2022
     steps:
     - uses: actions/cache@v4
       id: cache
@@ -67,7 +67,7 @@ jobs:
 
   mpv:
     needs: [ffmpeg]
-    runs-on: windows-2019
+    runs-on: windows-2022
     steps:
     - uses: actions/cache@v4
       id: cache
@@ -124,7 +124,7 @@ jobs:
         file_glob: true
 
   package:
-    runs-on: windows-2019
+    runs-on: windows-2022
     needs: [mpv]
     steps:
     - name: Package
