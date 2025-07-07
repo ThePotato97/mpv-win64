@@ -11,7 +11,7 @@ conflicts=('mpv')
 license=('GPL3')
 source=(
   "git+https://github.com/mpv-player/mpv"
-  "mpv-dovi.patch"
+  "dovi.patch"
 )
 md5sums=(
   'SKIP'
@@ -19,8 +19,8 @@ md5sums=(
 )
 
 prepare() {
-  cd "${srcdir}/mpv-${pkgver}"
-  patch -Np1 -i "${srcdir}/mpv-dovi.patch"
+  cd $srcdir/mpv-$pkgver
+  patch -Np1 -i "${srcdir}/dovi.patch"
 }
 
 build() {
