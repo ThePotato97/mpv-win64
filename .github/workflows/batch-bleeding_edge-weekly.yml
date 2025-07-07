@@ -8,25 +8,14 @@ on:
 jobs:
   setup-msys2:
     runs-on: windows-2022
-    outputs:
-      cache-hit: ${{ steps.cache.outputs.cache-hit }}
-    steps:
-      - name: Cache MSYS2 pacman packages
-        uses: actions/cache@v4
-        id: cache
-        with:
-          # Cache both system and user pkg caches:
-          path: |
-            C:\msys64\ucrt64\var\cache\pacman\pkg
-            C:\msys64\usr\var\cache\pacman\pkg
-          key: ${{ runner.os }}-msys2-pacman
 
+    steps:
       - name: Install MSYS2 & toolchain
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
-          cache: pacman
+          cache: true
           install: |
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-cmake
