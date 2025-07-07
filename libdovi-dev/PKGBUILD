@@ -21,7 +21,7 @@ package() {
 
   cd "${srcdir}/dovi_tool"
 
-  install -Dm644 target/release/libdovi.a "${pkgdir}/usr/lib/libdovi.a"
+  install -Dm644 "target/${CARCH}-pc-windows-gnu/release/libdovi.a" "${pkgdir}/usr/lib/libdovi.a"
 
   install -Dm644 dolby_vision/include/dovi.h "${pkgdir}/usr/include/dovi.h"
   install -Dm644 dolby_vision/libdovi.pc "${pkgdir}/usr/lib/pkgconfig/libdovi.pc"
