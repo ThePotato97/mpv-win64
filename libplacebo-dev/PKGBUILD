@@ -9,7 +9,7 @@ makedepends=('lcms2-dev' 'libdovi-dev' 'vulkan-dev' 'shaderc-dev' 'spirv-cross-d
 license=('LGPL')
 source=(
   "git+https://github.com/haasn/libplacebo#tag=v$pkgver"
-  "libplacebo-dovi.patch"
+  "dovi.patch"
 )
 md5sums=(
   'SKIP'
